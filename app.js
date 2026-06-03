@@ -315,6 +315,7 @@ function renderQuestion(){
       b.onclick=function(){ answerMC(o.correct, b, box, q); };
       box.appendChild(b);
     });
+    if(q.optionKind==="photo") sizePhotoOptions(box);
   } else { // typed
     html+='<div class="typearea"><input id="typed" class="'+(q.italicInput?"sci":"")+'" autocomplete="off" '+
       'autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="'+esc(q.placeholder)+'">'+
@@ -332,6 +333,24 @@ function renderQuestion(){
     input.addEventListener("keydown",function(e){ if(e.key==="Enter") submit(); });
   }
   el("nextBtn").classList.add("hidden");
+}
+
+// Measure the 4 option photos once loaded; make every option box adopt the LARGEST
+// image's proportions so all boxes match and each photo shows in full (no cropping).
+function sizePhotoOptions(box){
+  var imgs=[].slice.call(box.querySelectorAll("img"));
+  if(!imgs.length) return;
+  var loaded=0, dims=[];
+  function finalize(){
+    var best=null;
+    dims.forEach(function(d){ if(d.w&&d.h && (!best || d.w*d.h>best.w*best.h)) best=d; });
+    if(best) box.style.setProperty("--opt-ar", best.w+" / "+best.h);
+  }
+  imgs.forEach(function(im){
+    function rec(){ dims.push({w:im.naturalWidth, h:im.naturalHeight}); if(++loaded===imgs.length) finalize(); }
+    if(im.complete && im.naturalWidth){ rec(); }
+    else { im.addEventListener("load", rec); im.addEventListener("error", function(){ if(++loaded===imgs.length) finalize(); }); }
+  });
 }
 
 function answerMC(isCorrect, btn, box, q){

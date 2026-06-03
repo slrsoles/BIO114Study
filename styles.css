@@ -92,8 +92,10 @@ select{padding:8px 11px;border-radius:10px;border:1px solid var(--line);backgrou
   color:inherit;font:inherit;transition:border-color .12s,background .12s}
 .opt:hover:not([disabled]){border-color:var(--green)}
 .opt.sci{font-style:italic}
-.opt.photo{padding:6px}
-.opt.photo img{width:100%;height:150px;object-fit:cover;border-radius:8px;display:block}
+/* photo options: every box takes the largest option image's proportions (set via --opt-ar),
+   and each image is shown in full (contain), expanding to fill its box without cropping. */
+.opt.photo{padding:6px;aspect-ratio:var(--opt-ar, 4 / 3)}
+.opt.photo img{width:100%;height:100%;object-fit:contain;border-radius:8px;display:block;background:#faf8f2}
 .opt.correct{border-color:var(--good);background:var(--good-l)}
 .opt.wrong{border-color:var(--bad);background:var(--bad-l)}
 .opt[disabled]{cursor:default}
