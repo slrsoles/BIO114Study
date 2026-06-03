@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BIO 114 — California Plants Study</title>
+<meta name="description" content="Interactive study guide for BIO 114: California native and anthropogenic dune, marsh, and woodland plants.">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <a class="brand" href="#" id="brandHome">
+        <span class="leaf">🌿</span>
+        <span>
+          <span class="brand-title">California Plants — Study Guide</span>
+          <span class="brand-sub">BIO 114 · 41 species</span>
+        </span>
+      </a>
+      <nav class="topnav">
+        <button class="navbtn" data-go="home">Home</button>
+        <button class="navbtn" data-go="watchlist">Watchlist <span class="badge" id="watchBadge">0</span></button>
+        <button class="navbtn" data-go="browse">Browse</button>
+      </nav>
+    </header>
+    <main id="screen"><!-- rendered by app.js --></main>
+    <footer class="foot" id="foot"></footer>
+  </div>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
