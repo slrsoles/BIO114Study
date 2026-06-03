@@ -55,7 +55,9 @@ injects `KV_REST_API_URL` and `KV_REST_API_TOKEN` automatically. Redeploy.
 
 ## Data notes
 
-- Photos for **Monterey cypress** and **bulrush** are bundled in `assets/`; the other 39 load from Quizlet's CDN.
+- Most plant photos are **sourced from [Calflora](https://www.calflora.org)** and bundled in `assets/` (named `cf_*.jpg`);
+  Monterey cypress and bulrush use separately-provided images; a few remaining plants still load from Quizlet's CDN.
+  Each card shows its photo source, and `plants.csv` has a `photo_credit` column.
 - A few names carry the original set's spelling quirks (e.g. *Croton califonicus*, *Pinus sabina*); answers
   match the set, and typed checking is lenient.
 - Built from the Quizlet set; verified with automated tests (`test_site.js`, `test_api.js`, `test_cloud.js`

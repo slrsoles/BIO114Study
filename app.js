@@ -237,6 +237,9 @@ function updateUserChip(){
 function imgTag(src, cls, alt){
   return '<img class="'+(cls||"")+'" referrerpolicy="no-referrer" loading="lazy" src="'+esc(src)+'" alt="'+esc(alt||"")+'">';
 }
+// small photo-source caption (e.g. "📷 Calflora")
+function photoCredit(p){ return p && p.photo_credit ? '📷 Photo: '+esc(p.photo_credit) : ''; }
+function creditTag(p, cls){ return p && p.photo_credit ? '<div class="credit '+(cls||"")+'">'+photoCredit(p)+'</div>' : ''; }
 
 function mcText(opts){
   // opts: {plant, promptLabel, promptText, promptItalic, answerField, italicOptions, photo, promptSub, distractValues}
@@ -330,7 +333,7 @@ function renderQuestion(){
   el("qScore").textContent="Q "+(quiz.i+1)+" / "+total+" · Score "+scoreSoFar();
   var html="";
   if(q.promptLabel) html+='<div class="prompt-label">'+esc(q.promptLabel)+'</div>';
-  if(q.photo) html+=imgTag(q.photo,"qphoto","plant");
+  if(q.photo){ html+=imgTag(q.photo,"qphoto","plant"); html+=creditTag(q.plant); }
   if(q.promptText) html+='<p class="prompt'+(q.promptItalic?' sci':'')+'">'+esc(q.promptText)+'</p>';
   if(q.promptSub) html+='<p class="prompt-sub">'+esc(q.promptSub)+'</p>';
   if(q.desc) html+='<div class="desc">🪴 '+esc(q.desc)+'</div>';
@@ -441,7 +444,8 @@ function revealHTML(p){
     '<div>'+esc(p.common_name)+'</div>'+
     '<div class="r">🏞️ '+commLine+'</div>'+
     '<div class="r">🌱 '+esc(p.growth_form||"—")+' · '+esc(p.native_status)+'</div>'+
-    '<div class="r">📝 '+esc(p.description)+'</div></div></div>';
+    '<div class="r">📝 '+esc(p.description)+'</div>'+
+    (p.photo_credit?'<div class="r">'+photoCredit(p)+'</div>':'')+'</div></div>';
 }
 
 function scoreSoFar(){
@@ -583,6 +587,7 @@ function ncDescHTML(p){
   }
   return '<div class="fc-label">Description</div>'+
     (p.image_url?imgTag(p.image_url,"fc-photo",""):"")+
+    (p.photo_credit?'<div class="credit">'+photoCredit(p)+'</div>':"")+
     '<div class="fc-desc">'+body+'</div>';
 }
 function startNotecards(deck){
@@ -845,15 +850,17 @@ function renderBrowse(){
       '<div class="body"><div class="cn">'+esc(p.common_name)+'</div>'+
       '<div class="sn">'+esc(p.scientific_name)+'</div>'+
       '<span class="cm">'+esc(p.primary_community)+'</span>'+
-      '<div class="ns">'+esc(p.growth_form||"")+' · '+esc(p.native_status)+'</div></div></div>';
+      '<div class="ns">'+esc(p.growth_form||"")+' · '+esc(p.native_status)+'</div>'+
+      (p.photo_credit?'<div class="ns">'+photoCredit(p)+'</div>':'')+'</div></div>';
   }).join("")+'</div>';
   el("screen").innerHTML=html;
 }
 
 /* ---------------- wire up ---------------- */
 function init(){
-  el("foot").innerHTML='Built from the class Quizlet set. Photos for Monterey cypress and bulrush were provided separately; '+
-    'other photos load from Quizlet. Typed answers accept ~80% spelling accuracy. Progress is saved per username in this browser.';
+  el("foot").innerHTML='Built from the class Quizlet set; plant descriptions from the BIO 114 Field Trip Plant Notebook. '+
+    'Most plant photos are sourced from <a href="https://www.calflora.org" target="_blank" rel="noopener">Calflora</a>; '+
+    'a few load from Quizlet. Typed answers accept ~80% spelling accuracy. Progress is saved to your username.';
   // inject a user chip into the nav (click to switch user)
   var nav=document.querySelector(".topnav");
   if(nav && !el("userChip")){
