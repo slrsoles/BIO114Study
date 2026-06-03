@@ -10,7 +10,11 @@ Static front end (no build step) plus one serverless API for shared, cross-devic
   - *Easy*: multiple choice.
   - *Hard*: type every answer. Accepts ~80% spelling accuracy, plus a **"that was a typo — count it correct"** button.
 - **Watchlist** — miss a plant and it's added automatically; answer it correctly 3 times to clear it (a wrong answer resets its progress). Includes a "practice the watchlist" quiz.
-- **Usernames** — pick or create a profile on entry. Each profile keeps its own watchlist + stats.
+- **Notecards** (classic flip cards): *Common ⟷ Scientific*, and *Names ⟷ Description* (the back shows the full
+  field-guide write-up — habit, community, ID, role — sourced from the BIO 114 Field Trip Plant Notebook).
+- **Usernames + saved progress** — pick or create a profile on entry. Each profile keeps its own watchlist,
+  per-plant mastery, answer log, and session history, synced to the cloud so you resume on any device.
+- **Progress screen** — overall accuracy, simulate bests, plants seen, a "needs work" list, and recent sessions.
 - **Multiple-choice options are fully re-randomized on every question render.**
 
 ## Project layout

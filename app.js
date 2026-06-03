@@ -72,7 +72,27 @@ function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
 function listUsers(){ try{ return JSON.parse(lsGet(USERS_KEY))||[]; }catch(e){ return []; } }
 function getActiveUser(){ return lsGet(ACTIVE_KEY); }
 function setActiveUser(name){ lsSet(ACTIVE_KEY, name); updateUserChip(); updateWatchBadge(); }
-function blankProfile(){ return {watch:{}, stats:{answered:0, correct:0, simEasyBest:null, simHardBest:null}}; }
+function blankProfile(){
+  return { watch:{},
+    stats:{answered:0, correct:0, simEasyBest:null, simHardBest:null},
+    plants:{},      // per-plant mastery: id -> {seen,correct,wrong,last,lastTs}
+    sessions:[],    // completed quizzes (newest first): {ts,kind,total,correct,pct}
+    log:[] };       // rolling answer history (newest first): {ts,id,type,correct}
+}
+// Ensure a loaded blob has every field (migrates older {watch,stats}-only profiles).
+function normalizeProfile(b){
+  b = (b && typeof b==="object") ? b : {};
+  if(!b.watch || typeof b.watch!=="object") b.watch={};
+  if(!b.stats || typeof b.stats!=="object") b.stats={};
+  if(typeof b.stats.answered!=="number") b.stats.answered=0;
+  if(typeof b.stats.correct!=="number") b.stats.correct=0;
+  if(b.stats.simEasyBest===undefined) b.stats.simEasyBest=null;
+  if(b.stats.simHardBest===undefined) b.stats.simHardBest=null;
+  if(!b.plants || typeof b.plants!=="object") b.plants={};
+  if(!Array.isArray(b.sessions)) b.sessions=[];
+  if(!Array.isArray(b.log)) b.log=[];
+  return b;
+}
 function userKey(name){ return UPREFIX + encodeURIComponent(name); }
 function createUser(name){
   name=cleanName(name); if(!name) return null;
@@ -89,13 +109,11 @@ function createUser(name){
 }
 function loadProfile(name){
   name=name||getActiveUser(); if(!name) return blankProfile();
-  try{ return JSON.parse(lsGet(userKey(name))) || blankProfile(); }catch(e){ return blankProfile(); }
+  try{ return normalizeProfile(JSON.parse(lsGet(userKey(name)))); }catch(e){ return blankProfile(); }
 }
 function saveProfileLocal(blob, name){
   name=name||getActiveUser(); if(!name) return;
-  if(!blob.stats) blob.stats=blankProfile().stats;
-  if(!blob.watch) blob.watch={};
-  lsSet(userKey(name), JSON.stringify(blob));
+  lsSet(userKey(name), JSON.stringify(normalizeProfile(blob)));
 }
 // save locally AND (debounced) push to the cloud database
 function saveProfile(blob, name){
@@ -152,7 +170,8 @@ function signIn(name){
   setActiveUser(name);
   Cloud.pull(name, function(data){
     if(data && typeof data==="object"){
-      saveProfileLocal({watch:data.watch||{}, stats:data.stats||blankProfile().stats}, name);
+      // cloud is the source of truth on sign-in: load the FULL saved profile (watch + stats + history)
+      saveProfileLocal(normalizeProfile(data), name);
     } else {
       Cloud.push(name, loadProfile(name)); // register new user in the cloud
     }
@@ -174,19 +193,31 @@ function recordSimResult(difficulty, pct){
   if(b.stats[key]==null || pct>b.stats[key]) b.stats[key]=pct;
   saveProfile(b);
 }
-// record one answer: updates the active profile's watchlist + running stats in a single write.
-function recordResult(plant, correct){
-  var b=loadProfile(); var w=b.watch||{}; var id=String(plant.id);
+// record one answer: updates watchlist + stats + per-plant mastery + answer log in one write.
+function recordResult(plant, correct, type){
+  var b=loadProfile(); var w=b.watch; var id=String(plant.id);
+  // watchlist: wrong adds (streak 0); correct on a watched plant +1; 3 clears it
   if(correct){
     if(w[id]!==undefined){ w[id].streak=(w[id].streak||0)+1; if(w[id].streak>=3) delete w[id]; }
   } else {
     w[id]={streak:0};
   }
-  b.watch=w;
-  b.stats.answered=(b.stats.answered||0)+1;
-  if(correct) b.stats.correct=(b.stats.correct||0)+1;
+  // overall stats
+  b.stats.answered++; if(correct) b.stats.correct++;
+  // per-plant mastery
+  var ps=b.plants[id]||{seen:0,correct:0,wrong:0,last:null,lastTs:0};
+  ps.seen++; if(correct) ps.correct++; else ps.wrong++;
+  ps.last=correct?"correct":"wrong"; ps.lastTs=Date.now();
+  b.plants[id]=ps;
+  // rolling answer history (newest first, capped)
+  b.log.unshift({ts:Date.now(), id:plant.id, type:type||null, correct:!!correct});
+  if(b.log.length>150) b.log.length=150;
   saveProfile(b);
   updateWatchBadge();
+}
+// record a finished quiz into the history (newest first, capped)
+function pushSession(rec){
+  var b=loadProfile(); b.sessions.unshift(rec); if(b.sessions.length>50) b.sessions.length=50; saveProfile(b);
 }
 function byId(id){ for(var i=0;i<PLANTS.length;i++) if(PLANTS[i].id===id) return PLANTS[i]; return null; }
 function updateWatchBadge(){
@@ -420,8 +451,9 @@ function scoreSoFar(){
 function nextQuestion(){
   // record the resolved result for the question just answered
   var q=quiz.cur;
+  var item=quiz.items[quiz.i];
   quiz.results.push({plant:q.plant, correct:quiz.curCorrect});
-  recordResult(q.plant, quiz.curCorrect);
+  recordResult(q.plant, quiz.curCorrect, item?item.type:null);
   quiz.i++;
   if(quiz.i>=quiz.items.length){ showResults(); return; }
   renderQuestion();
@@ -430,6 +462,7 @@ function nextQuestion(){
 function showResults(){
   var tot=quiz.results.length, correct=scoreSoFar(), pct=Math.round(correct/tot*100);
   if(quiz.simDifficulty) recordSimResult(quiz.simDifficulty, pct);
+  pushSession({ts:Date.now(), kind:quiz.title||"Quiz", total:tot, correct:correct, pct:pct});
   var missed=quiz.results.filter(function(r){return !r.correct;}).map(function(r){return r.plant;});
   var msg = pct>=90?"Excellent — you know these cold. 🌟":
             pct>=75?"Solid work. Review the misses and you're set.":
@@ -526,10 +559,76 @@ function startWatchlistPractice(){
   quiz.retry=function(){ startWatchlistPractice(); };
 }
 
+/* ---------------- notecards (classic flip cards) ---------------- */
+var nc=null;
+var NC_DECKS={
+  names:{ title:"Common ⟷ Scientific",
+    front:function(p){ return '<div class="fc-label">Common name</div><div class="fc-main">'+esc(p.common_name)+'</div>'; },
+    back:function(p){ return '<div class="fc-label">Scientific name</div><div class="fc-main sci">'+esc(p.scientific_name)+'</div>'; } },
+  desc:{ title:"Names ⟷ Description",
+    front:function(p){ return '<div class="fc-label">Name this plant</div>'+
+      '<div class="fc-main sci">'+esc(p.scientific_name)+'</div><div class="fc-sub">'+esc(p.common_name)+'</div>'; },
+    back:function(p){ return ncDescHTML(p); } }
+};
+function ncDescHTML(p){
+  var n=p.notes;
+  var body;
+  if(n){
+    body='<p><b>Habit:</b> '+esc(n.habit)+'</p>'+
+         '<p><b>Community:</b> '+esc(n.community)+'</p>'+
+         '<p><b>ID:</b> '+esc(n.id)+'</p>'+
+         (n.role?'<p><b>Role:</b> '+esc(n.role)+'</p>':'');
+  } else {
+    body='<p>'+esc(p.description)+'</p>';
+  }
+  return '<div class="fc-label">Description</div>'+
+    (p.image_url?imgTag(p.image_url,"fc-photo",""):"")+
+    '<div class="fc-desc">'+body+'</div>';
+}
+function startNotecards(deck){
+  if(!NC_DECKS[deck]) deck="names";
+  nc={deck:deck, items:shuffle(PLANTS), i:0, flipped:false};
+  renderNotecards();
+}
+function renderNotecards(){
+  var d=NC_DECKS[nc.deck];
+  el("screen").innerHTML=
+    '<div class="quizbar"><span class="title">🃏 Notecards · '+esc(d.title)+'</span>'+
+    '<span class="score" id="ncCount"></span></div>'+
+    '<div class="flashcard" id="flash"><div class="fc-content" id="fcContent"></div>'+
+    '<div class="fc-hint">tap card to flip · ← → to move</div></div>'+
+    '<div class="nav nc-nav">'+
+      '<button class="btn btn-ghost" id="ncHome">⌂ Home</button>'+
+      '<div class="nc-mid"><button class="btn btn-ghost btn-sm" id="ncPrev">← Prev</button>'+
+      '<button class="btn btn-primary btn-sm" id="ncFlip">Flip</button>'+
+      '<button class="btn btn-ghost btn-sm" id="ncNext">Next →</button></div>'+
+      '<button class="btn btn-ghost btn-sm" id="ncShuffle">🔀 Shuffle</button></div>';
+  el("flash").onclick=ncFlip;
+  el("ncFlip").onclick=function(e){ e.stopPropagation(); ncFlip(); };
+  el("ncPrev").onclick=function(e){ e.stopPropagation(); ncStep(-1); };
+  el("ncNext").onclick=function(e){ e.stopPropagation(); ncStep(1); };
+  el("ncShuffle").onclick=function(e){ e.stopPropagation(); nc.items=shuffle(nc.items); nc.i=0; nc.flipped=false; ncShow(); };
+  el("ncHome").onclick=function(){ go("home"); };
+  ncShow();
+}
+function ncShow(){
+  var d=NC_DECKS[nc.deck], p=nc.items[nc.i];
+  var content=el("fcContent"); if(!content) return;
+  content.innerHTML=nc.flipped ? d.back(p) : d.front(p);
+  var card=el("flash");
+  card.classList.toggle("is-back", nc.flipped);
+  // brief flip animation
+  card.classList.remove("fc-anim"); void card.offsetWidth; card.classList.add("fc-anim");
+  el("ncCount").textContent=(nc.i+1)+" / "+nc.items.length;
+}
+function ncFlip(){ nc.flipped=!nc.flipped; ncShow(); }
+function ncStep(dir){ nc.i=(nc.i+dir+nc.items.length)%nc.items.length; nc.flipped=false; ncShow(); }
+
 /* ---------------- screens ---------------- */
 function go(screen){
   if(screen==="gate") renderGate();
   else if(screen==="home"){ if(!getActiveUser()){ renderGate(); } else renderHome(); }
+  else if(screen==="progress"){ if(!getActiveUser()){ renderGate(); } else renderProgress(); }
   else if(screen==="browse") renderBrowse();
   else if(screen==="watchlist") renderWatchlist();
   else if(screen==="quiz"){ /* shell already mounted by starter */ }
@@ -575,7 +674,8 @@ function renderHome(){
     '<span class="stat-sub">'+(s.answered?(s.answered+' answered · '+acc+'% accuracy'+
       (s.simEasyBest!=null?' · Easy best '+s.simEasyBest+'%':'')+
       (s.simHardBest!=null?' · Hard best '+s.simHardBest+'%':'')):'No questions yet — pick a mode below.')+'</span></div>'+
-    '<button class="btn btn-ghost btn-sm" id="switchUser">Switch user</button></div>';
+    '<div class="greet-actions"><button class="btn btn-ghost btn-sm" id="viewProg">📈 Progress</button>'+
+    '<button class="btn btn-ghost btn-sm" id="switchUser">Switch user</button></div></div>';
   html+='<div class="hero"><div><h2>🧪 Simulate Exam</h2>'+
     '<p>20 questions across all four question types, with fresh plants and answer choices every run.</p></div>'+
     '<div class="actions"><button class="btn btn-easy" id="simEasy">Easy · multiple choice</button>'+
@@ -587,6 +687,15 @@ function renderHome(){
     (wc?'Miss a plant and it lands here. Get it right 3 times to clear it.':'Plants you miss will show up here automatically.')+
     '</p></div>'+(wc?'<button class="btn btn-accent btn-sm" id="wlPractice">Practice watchlist</button>':'')+
     '<button class="btn btn-ghost btn-sm" id="wlView">View</button></div>';
+
+  html+='<div class="section-title">🃏 Notecards</div>';
+  html+='<div class="card-grid">'+
+    '<button class="mode" id="ncNames"><span class="num">🃏</span><h3>Common ⟷ Scientific</h3>'+
+    '<p>Classic flip cards: common name on the front, scientific name on the back.</p>'+
+    '<span class="tag">Flip cards</span></button>'+
+    '<button class="mode" id="ncDesc"><span class="num">🃏</span><h3>Names ⟷ Description</h3>'+
+    '<p>Both names on the front; the full field-guide description (habit, community, ID, role) on the back.</p>'+
+    '<span class="tag">Flip cards</span></button></div>';
 
   html+='<div class="section-title">📚 Practice by type</div>';
   html+='<div class="row-controls"><label class="muted">Questions per round:</label>'+
@@ -611,6 +720,9 @@ function renderHome(){
   el("wlView").onclick=function(){ go("watchlist"); };
   if(el("wlPractice")) el("wlPractice").onclick=function(){ startWatchlistPractice(); };
   el("switchUser").onclick=function(){ go("gate"); };
+  el("viewProg").onclick=function(){ go("progress"); };
+  el("ncNames").onclick=function(){ startNotecards("names"); };
+  el("ncDesc").onclick=function(){ startNotecards("desc"); };
 }
 function modeDesc(id){
   return {
@@ -652,6 +764,80 @@ function renderWatchlist(){
   el("wlClear").onclick=function(){ if(confirm("Clear the entire watchlist?")){ saveWatch({}); renderWatchlist(); updateWatchBadge(); } };
 }
 
+function fmtWhen(ts){
+  try{ return new Date(ts).toLocaleString(undefined,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}); }
+  catch(e){ return ""; }
+}
+function statCard(big,label){
+  return '<div class="stat-card"><div class="sc-big">'+esc(String(big))+'</div><div class="sc-lbl">'+esc(label)+'</div></div>';
+}
+function renderProgress(){
+  var prof=loadProfile(); var s=prof.stats;
+  var acc=s.answered?Math.round(s.correct/s.answered*100):0;
+  var w=loadWatch();
+  var rows=Object.keys(prof.plants).map(function(id){
+    var ps=prof.plants[id]; var p=byId(parseInt(id,10)); if(!p||!ps.seen) return null;
+    return {p:p, ps:ps, acc:ps.correct/ps.seen, onWatch:w[id]!==undefined};
+  }).filter(Boolean);
+  var seenCount=rows.length;
+  var mastered=rows.filter(function(r){return r.ps.seen>=2 && r.acc>=0.9 && !r.onWatch;}).length;
+  var needs=rows.filter(function(r){return r.onWatch || r.acc<0.7 || r.ps.last==="wrong";})
+                .sort(function(x,y){return x.acc-y.acc || y.ps.wrong-x.ps.wrong;});
+
+  var html='<div class="quizbar"><span class="title">📈 '+esc(getActiveUser()||"Your")+'’s progress</span>'+
+    '<button class="btn btn-ghost btn-sm" id="progHome">⌂ Home</button></div>';
+
+  if(!s.answered){
+    html+='<div class="empty"><div class="big">📊</div><p>No history yet. Answer some questions and your accuracy, '+
+      'per-plant mastery, and session history will appear here — saved to your account and synced across devices.</p>'+
+      '<button class="btn btn-primary" id="progStart">Start a quiz</button></div>';
+    el("screen").innerHTML=html;
+    el("progHome").onclick=function(){ go("home"); };
+    el("progStart").onclick=function(){ go("home"); };
+    return;
+  }
+
+  html+='<div class="prog-cards">'+
+    statCard(s.answered,"questions answered")+
+    statCard(acc+"%","overall accuracy")+
+    statCard(seenCount+"/"+PLANTS.length,"plants seen")+
+    statCard(mastered,"mastered")+
+    statCard(watchCount(),"on watchlist")+
+    statCard(s.simEasyBest==null?"—":s.simEasyBest+"%","sim easy best")+
+    statCard(s.simHardBest==null?"—":s.simHardBest+"%","sim hard best")+
+    '</div>';
+
+  html+='<div class="section-title">🔎 Needs work ('+needs.length+')</div>';
+  if(!needs.length){
+    html+='<p class="muted">Nothing flagged right now'+(mastered?' — '+mastered+' plant(s) look mastered. 🌟':'.')+'</p>';
+  } else {
+    html+='<div class="prog-list">'+needs.slice(0,24).map(function(r){
+      var pct=Math.round(r.acc*100);
+      return '<div class="prog-row">'+(r.p.image_url?imgTag(r.p.image_url,"",""):'')+
+        '<div class="grow"><div class="cn">'+esc(r.p.common_name)+(r.onWatch?' <span class="wl-tag">★ watchlist</span>':'')+'</div>'+
+        '<div class="sn">'+esc(r.p.scientific_name)+'</div>'+
+        '<div class="bar"><i style="width:'+pct+'%"></i></div></div>'+
+        '<div class="acc">'+r.ps.correct+'/'+r.ps.seen+'<span>'+pct+'%</span></div></div>';
+    }).join("")+'</div>';
+  }
+
+  html+='<div class="section-title">🗓️ Recent sessions</div>';
+  if(!prof.sessions.length){ html+='<p class="muted">No completed sessions yet.</p>'; }
+  else {
+    html+='<div class="sess-list">'+prof.sessions.slice(0,10).map(function(se){
+      return '<div class="sess-row"><div class="grow"><b>'+esc(se.kind)+'</b><span class="muted"> · '+fmtWhen(se.ts)+'</span></div>'+
+        '<div class="sess-score">'+se.correct+'/'+se.total+' <span>'+se.pct+'%</span></div></div>';
+    }).join("")+'</div>';
+  }
+
+  html+='<div class="nav"><button class="btn btn-ghost" id="progHome2">⌂ Home</button>'+
+        (watchCount()?'<button class="btn btn-accent" id="progWl">Practice watchlist</button>':'')+'</div>';
+  el("screen").innerHTML=html;
+  el("progHome").onclick=function(){ go("home"); };
+  el("progHome2").onclick=function(){ go("home"); };
+  if(el("progWl")) el("progWl").onclick=function(){ startWatchlistPractice(); };
+}
+
 function renderBrowse(){
   var html='<div class="quizbar"><span class="title">📖 All '+PLANTS.length+' cards</span></div>';
   html+='<div class="browse-grid">'+PLANTS.slice().sort(function(a,b){return a.id-b.id;}).map(function(p){
@@ -681,6 +867,13 @@ function init(){
     b.onclick=function(){ if(!getActiveUser()){ go("gate"); return; } go(b.getAttribute("data-go")); };
   });
   el("brandHome").onclick=function(e){ e.preventDefault(); go(getActiveUser()?"home":"gate"); };
+  // keyboard shortcuts for notecards (only when the flip card is on screen)
+  document.addEventListener("keydown", function(e){
+    if(!el("flash")) return;
+    if(e.key===" "||e.key==="Enter"){ e.preventDefault(); ncFlip(); }
+    else if(e.key==="ArrowRight") ncStep(1);
+    else if(e.key==="ArrowLeft") ncStep(-1);
+  });
   updateWatchBadge(); updateUserChip();
   go(getActiveUser()?"home":"gate");
 }
@@ -696,6 +889,8 @@ window.APP={
   go:go, getQuiz:function(){return quiz;}, SIM_TYPES:SIM_TYPES, PRACTICE:PRACTICE,
   listUsers:listUsers, createUser:createUser, getActiveUser:getActiveUser, setActiveUser:setActiveUser,
   deleteUser:deleteUser, loadProfile:loadProfile, saveProfile:saveProfile, saveProfileLocal:saveProfileLocal,
-  getStats:getStats, signIn:signIn, Cloud:Cloud, schedulePush:schedulePush, recordSimResult:recordSimResult
+  getStats:getStats, signIn:signIn, Cloud:Cloud, schedulePush:schedulePush, recordSimResult:recordSimResult,
+  normalizeProfile:normalizeProfile, pushSession:pushSession, renderProgress:renderProgress,
+  startNotecards:startNotecards, ncFlip:ncFlip, ncStep:ncStep, getNc:function(){return nc;}, NC_DECKS:NC_DECKS
 };
 })();

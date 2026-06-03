@@ -19,6 +19,7 @@
       </a>
       <nav class="topnav">
         <button class="navbtn" data-go="home">Home</button>
+        <button class="navbtn" data-go="progress">Progress</button>
         <button class="navbtn" data-go="watchlist">Watchlist <span class="badge" id="watchBadge">0</span></button>
         <button class="navbtn" data-go="browse">Browse</button>
       </nav>
@@ -28,5 +29,10 @@
   </div>
   <script src="data.js"></script>
   <script src="app.js"></script>
+  <!-- Vercel Web Analytics (static-site method; works once Analytics is enabled in the Vercel project) -->
+  <script>
+    window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+  </script>
+  <script defer src="/_vercel/insights/script.js"></script>
 </body>
 </html>
