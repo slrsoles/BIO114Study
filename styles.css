@@ -218,6 +218,21 @@ select{padding:8px 11px;border-radius:10px;border:1px solid var(--line);backgrou
 .nc-nav{align-items:center}
 .nc-mid{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center}
 
+/* password gate overlay */
+#gateOverlay{position:fixed;inset:0;z-index:9999;background:linear-gradient(160deg,#f4f1ea 0%,#e7efe2 100%);
+  display:flex;align-items:center;justify-content:center;padding:24px}
+.gate-pw-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);
+  padding:34px 30px;max-width:420px;width:100%;text-align:center}
+.gate-pw-card .leaf{font-size:2.6rem}
+.gate-pw-card h2{margin:8px 0 2px;font-size:1.3rem}
+.gate-pw-card p{margin:0 0 16px;color:var(--muted);font-size:.92rem}
+.gate-pw-row{display:flex;gap:9px;flex-wrap:wrap}
+.gate-pw-row input{flex:1;min-width:160px;padding:12px 14px;border-radius:11px;border:1.5px solid var(--line);
+  font-size:1rem;background:#fff;color:var(--ink)}
+.gate-pw-row input:focus{outline:none;border-color:var(--green)}
+.gate-err{min-height:18px;margin-top:10px;color:var(--bad);font-size:.85rem}
+.gate-foot{margin-top:6px;color:var(--muted);font-size:.76rem}
+
 /* footer */
 .foot{margin-top:30px;border-top:1px solid var(--line);padding-top:14px;font-size:.78rem;color:var(--muted)}
 .foot a{color:var(--green-d)}

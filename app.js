@@ -369,12 +369,18 @@ function renderQuestion(){
     var submit=function(){
       if(quiz.answered) return;
       var res=checkTyped(input.value, q.accept, q.threshold);
-      input.disabled=true;
+      input.readOnly=true;  // keep it focused (not disabled) so Enter still reaches this handler
       finishQuestion(q, res.ok, {typedValue:input.value, ratio:res.ratio, allowOverride:!res.ok});
     };
     el("checkBtn").onclick=submit;
-    // preventDefault stops this same Enter from also activating the (about-to-be-focused) Next button
-    input.addEventListener("keydown",function(e){ if(e.key==="Enter"){ e.preventDefault(); submit(); } });
+    // Enter on the focused input handles BOTH actions: 1st Enter = submit, 2nd Enter = next.
+    // Because focus never jumps to the Next button, Enter can't accidentally skip the question.
+    input.addEventListener("keydown",function(e){
+      if(e.key!=="Enter") return;
+      e.preventDefault();
+      if(!quiz.answered) submit();
+      else nextQuestion();
+    });
   }
   el("nextBtn").classList.add("hidden");
 }
@@ -412,6 +418,18 @@ function answerMC(isCorrect, btn, box, q){
   finishQuestion(q, isCorrect, {});
 }
 
+// study box shown after EVERY answer (correct or wrong), in every quiz:
+// the easy-to-spot key feature + the scientific-name root hint.
+function learnBoxHTML(p){
+  var h=p.hints||{};
+  if(!h.look && !h.sci) return "";
+  return '<div class="hintbox">'+
+    (h.look ? '👁 <b>Key feature:</b> '+esc(h.look) : '')+
+    (h.look && h.sci ? '<br>' : '')+
+    (h.sci ? '💡 <b>Roots:</b> '+esc(h.sci) : '')+
+    '</div>';
+}
+
 function finishQuestion(q, correct, extra){
   extra=extra||{};
   quiz.answered=true;
@@ -426,16 +444,8 @@ function finishQuestion(q, correct, extra){
     typedNote=' You typed: <b>'+esc(extra.typedValue||"(blank)")+'</b>'+
       (extra.ratio!=null?' <span class="muted">('+Math.round(extra.ratio*100)+'% match)</span>':'');
   }
-  // hint on a wrong answer (Lab Practical): what to SEE + the root/feature clue
-  var hintBox = "";
-  if(!correct && (q.look || q.hint)){
-    hintBox = '<div class="hintbox">'+
-      (q.look ? '👁 <b>Look for:</b> '+esc(q.look) : '')+
-      (q.look && q.hint ? '<br>' : '')+
-      (q.hint ? '💡 <b>Hint:</b> '+esc(q.hint) : '')+
-      '</div>';
-  }
-  fb.innerHTML=head+typedNote+hintBox+revealHTML(q.plant);
+  var learn=learnBoxHTML(q.plant);
+  fb.innerHTML=head+typedNote+learn+revealHTML(q.plant);
   panel.appendChild(fb);
 
   if(extra.allowOverride){
@@ -445,15 +455,17 @@ function finishQuestion(q, correct, extra){
     fb.appendChild(ov);
     el("ovBtn").onclick=function(){
       quiz.curCorrect=true;
-      fb.className="feedback show ok"; fb.innerHTML='<b>✓ Counted correct.</b>'+revealHTML(q.plant);
+      fb.className="feedback show ok"; fb.innerHTML='<b>✓ Counted correct.</b>'+learn+revealHTML(q.plant);
       el("qScore").textContent="Q "+(quiz.i+1)+" / "+quiz.items.length+" · Score "+(scoreSoFar()+1);
+      var ti=el("typed"); if(ti && ti.focus) ti.focus();  // keep Enter-to-advance working after override
     };
   }
   el("qProg").style.width=((quiz.i+1)/quiz.items.length*100)+"%";
   var nb=el("nextBtn"); nb.classList.remove("hidden");
   nb.textContent=(quiz.i+1>=quiz.items.length)?"See results →":"Next →";
-  // defer focus so the Enter keypress that submitted can't also trigger this button
-  setTimeout(function(){ if(nb && nb.focus) nb.focus(); }, 0);
+  // For MC, focus Next for keyboard flow. For TYPED, leave focus on the input so its Enter
+  // handler manages "next" (focusing the button here is what caused Enter to skip questions).
+  if(q.format==="mc") setTimeout(function(){ if(nb && nb.focus) nb.focus(); }, 0);
 }
 
 function revealHTML(p){
@@ -573,7 +585,7 @@ function startSimulate(difficulty){
 /* Lab Practical (v2): mirrors the real bench exam — a specimen photo is always shown,
    and you type ONE thing about it (common name, scientific name, or habitat/community). */
 var LAB_TYPES=["labCommon","labSci","labHabitat"];
-var LAB_THRESHOLD=0.95;   // the bench exam is graded strictly: 95% accuracy = correct
+var LAB_THRESHOLD=0.85;   // strict-ish, but lenient enough to count plurals/near-spellings (e.g. "sand verbena" vs "sand verbenas")
 function buildLab(plant, type){
   var h=plant.hints||{};
   if(type==="labCommon")
@@ -940,8 +952,54 @@ function init(){
     else if(e.key==="ArrowRight") ncStep(1);
     else if(e.key==="ArrowLeft") ncStep(-1);
   });
+  // password gate (per-IP, validated server-side) runs before the app is usable
+  passwordGate(startApp);
+}
+function startApp(){
   updateWatchBadge(); updateUserChip();
   go(getActiveUser()?"home":"gate");
+}
+
+/* ---------- password gate ---------- */
+function passwordGate(onPass){
+  if(typeof fetch!=="function"){ onPass(); return; }   // e.g. opened as a local file: don't lock out
+  fetch("/api/gate?check=1").then(function(r){ return r.ok?r.json():null; }).then(function(j){
+    if(!j || !j.enabled || j.authorized){ onPass(); }   // gate off, or this IP already authorized
+    else showPasswordPage(onPass);
+  }).catch(function(){ onPass(); });                     // API unreachable -> fail open (don't brick the app)
+}
+function showPasswordPage(onPass){
+  var ov=document.createElement("div");
+  ov.id="gateOverlay";
+  ov.innerHTML=
+    '<div class="gate-pw-card">'+
+      '<div class="leaf">🌿</div>'+
+      '<h2>BIO 114 — Plant Study</h2>'+
+      '<p>This study site is password-protected.</p>'+
+      '<div class="gate-pw-row">'+
+        '<input id="gatePw" type="password" autocomplete="off" autocapitalize="off" '+
+        'autocorrect="off" spellcheck="false" placeholder="Enter password">'+
+        '<button class="btn btn-primary" id="gateBtn">Enter</button>'+
+      '</div>'+
+      '<div class="gate-err" id="gateErr"></div>'+
+      '<div class="gate-foot">Access is remembered for this network.</div>'+
+    '</div>';
+  document.body.appendChild(ov);
+  var pw=el("gatePw"); if(pw && pw.focus) pw.focus();
+  var submit=function(){
+    var val=(pw.value||"");
+    if(!val) return;
+    var btn=el("gateBtn"); btn.disabled=true; el("gateErr").textContent="";
+    fetch("/api/gate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:val})})
+      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j}; }); })
+      .then(function(res){
+        if(res.ok && res.j && res.j.authorized){ if(ov.parentNode) ov.parentNode.removeChild(ov); onPass(); }
+        else { el("gateErr").textContent="Incorrect password — try again."; btn.disabled=false; pw.focus(); pw.select(); }
+      })
+      .catch(function(){ el("gateErr").textContent="Network error — try again."; btn.disabled=false; });
+  };
+  el("gateBtn").onclick=submit;
+  pw.addEventListener("keydown",function(e){ if(e.key==="Enter"){ e.preventDefault(); submit(); } });
 }
 if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", init);
 else init();

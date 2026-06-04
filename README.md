@@ -53,6 +53,20 @@ injects `KV_REST_API_URL` and `KV_REST_API_TOKEN` automatically. Redeploy.
 
 `api/progress.js` reads either pair of variables. No code changes needed.
 
+## Password-protect the site (optional)
+
+To lock the app behind a shared password (Shopify-style), set one env var in Vercel:
+
+- `SITE_PASSWORD` = the password you want to share.
+
+With it set, visitors see a password page before the app. After a correct entry, that **network (IP) is
+remembered for 30 days** in Redis (stored hashed, never the raw IP), so the password is only entered once per
+network. Remove the env var to disable the gate. Requires the same Redis env vars as above for the per-IP memory.
+
+Notes: this gates the UI, not the raw static files (which remain fetchable on any static host), and it fails
+**open** if the gate API is unreachable so you can't get locked out — it's a deterrent against link-sharing,
+not hardened access control.
+
 ## Data notes
 
 - Most plant photos are **sourced from [Calflora](https://www.calflora.org)** and bundled in `assets/` (named `cf_*.jpg`);
