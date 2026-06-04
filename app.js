@@ -74,7 +74,7 @@ function getActiveUser(){ return lsGet(ACTIVE_KEY); }
 function setActiveUser(name){ lsSet(ACTIVE_KEY, name); updateUserChip(); updateWatchBadge(); }
 function blankProfile(){
   return { watch:{},
-    stats:{answered:0, correct:0, simEasyBest:null, simHardBest:null},
+    stats:{answered:0, correct:0, simEasyBest:null, simHardBest:null, simPracticalBest:null},
     plants:{},      // per-plant mastery: id -> {seen,correct,wrong,last,lastTs}
     sessions:[],    // completed quizzes (newest first): {ts,kind,total,correct,pct}
     log:[] };       // rolling answer history (newest first): {ts,id,type,correct}
@@ -88,6 +88,7 @@ function normalizeProfile(b){
   if(typeof b.stats.correct!=="number") b.stats.correct=0;
   if(b.stats.simEasyBest===undefined) b.stats.simEasyBest=null;
   if(b.stats.simHardBest===undefined) b.stats.simHardBest=null;
+  if(b.stats.simPracticalBest===undefined) b.stats.simPracticalBest=null;
   if(!b.plants || typeof b.plants!=="object") b.plants={};
   if(!Array.isArray(b.sessions)) b.sessions=[];
   if(!Array.isArray(b.log)) b.log=[];
@@ -189,7 +190,10 @@ function watchPlants(){
 }
 function getStats(){ return loadProfile().stats || blankProfile().stats; }
 function recordSimResult(difficulty, pct){
-  var b=loadProfile(); var key=difficulty==="hard"?"simHardBest":"simEasyBest";
+  var b=loadProfile();
+  var key = difficulty==="hard" ? "simHardBest"
+          : difficulty==="practical" ? "simPracticalBest"
+          : "simEasyBest";
   if(b.stats[key]==null || pct>b.stats[key]) b.stats[key]=pct;
   saveProfile(b);
 }
@@ -550,6 +554,34 @@ function startSimulate(difficulty){
   quiz.retry=function(){ startSimulate(difficulty); };
 }
 
+/* Lab Practical (v2): mirrors the real bench exam — a specimen photo is always shown,
+   and you type ONE thing about it (common name, scientific name, or habitat/community). */
+var LAB_TYPES=["labCommon","labSci","labHabitat"];
+function buildLab(plant, type){
+  if(type==="labCommon")
+    return typed({plant:plant, promptLabel:"Specimen — type the COMMON name", photo:plant.image_url,
+      accept:[plant.common_name], correctDisplay:plant.common_name, placeholder:"common name…"});
+  if(type==="labSci")
+    return typed({plant:plant, promptLabel:"Specimen — type the SCIENTIFIC name", photo:plant.image_url,
+      italicInput:true, accept:[plant.scientific_name], correctDisplay:plant.scientific_name, placeholder:"Genus species…"});
+  // labHabitat
+  return typed({plant:plant, promptLabel:"Specimen — type the HABITAT / plant community", photo:plant.image_url,
+    accept:(plant.communities && plant.communities.length)?plant.communities:[plant.primary_community],
+    correctDisplay:plant.primary_community, placeholder:"plant community…"});
+}
+function startLabPractical(){
+  var pool=shuffle(PLANTS).slice(0, Math.min(20, PLANTS.length));
+  var items=pool.map(function(p){
+    var t=LAB_TYPES[Math.floor(Math.random()*LAB_TYPES.length)];
+    return {plant:p, type:t, build:buildLab};
+  });
+  mountQuizShell("Lab Practical (v2)");
+  quiz=null;
+  startSession({title:"Lab Practical (v2)", items:items});
+  quiz.simDifficulty="practical";
+  quiz.retry=function(){ startLabPractical(); };
+}
+
 function startWatchlistPractice(){
   var plants=watchPlants();
   if(!plants.length){ go("watchlist"); return; }
@@ -678,12 +710,16 @@ function renderHome(){
   html+='<div class="greet"><div><span class="hi">Hi, '+esc(getActiveUser()||"there")+' 👋</span>'+
     '<span class="stat-sub">'+(s.answered?(s.answered+' answered · '+acc+'% accuracy'+
       (s.simEasyBest!=null?' · Easy best '+s.simEasyBest+'%':'')+
-      (s.simHardBest!=null?' · Hard best '+s.simHardBest+'%':'')):'No questions yet — pick a mode below.')+'</span></div>'+
+      (s.simHardBest!=null?' · Hard best '+s.simHardBest+'%':'')+
+      (s.simPracticalBest!=null?' · Practical best '+s.simPracticalBest+'%':'')):'No questions yet — pick a mode below.')+'</span></div>'+
     '<div class="greet-actions"><button class="btn btn-ghost btn-sm" id="viewProg">📈 Progress</button>'+
     '<button class="btn btn-ghost btn-sm" id="switchUser">Switch user</button></div></div>';
   html+='<div class="hero"><div><h2>🧪 Simulate Exam</h2>'+
-    '<p>20 questions across all four question types, with fresh plants and answer choices every run.</p></div>'+
-    '<div class="actions"><button class="btn btn-easy" id="simEasy">Easy · multiple choice</button>'+
+    '<p>20 questions, fresh plants and choices every run. <b>Lab Practical (v2)</b> mirrors the bench exam: '+
+    'a specimen photo, type what it is.</p></div>'+
+    '<div class="actions">'+
+    '<button class="btn btn-lab" id="simLab">🔬 Lab Practical (v2)</button>'+
+    '<button class="btn btn-easy" id="simEasy">Easy · multiple choice</button>'+
     '<button class="btn btn-hard" id="simHard">Hard · type answers</button></div></div>';
 
   html+='<div class="section-title">⭐ Watchlist</div>';
@@ -720,6 +756,7 @@ function renderHome(){
     b.onclick=function(){ startPractice(id); };
     grid.appendChild(b);
   });
+  el("simLab").onclick=function(){ startLabPractical(); };
   el("simEasy").onclick=function(){ startSimulate("easy"); };
   el("simHard").onclick=function(){ startSimulate("hard"); };
   el("wlView").onclick=function(){ go("watchlist"); };
@@ -808,6 +845,7 @@ function renderProgress(){
     statCard(seenCount+"/"+PLANTS.length,"plants seen")+
     statCard(mastered,"mastered")+
     statCard(watchCount(),"on watchlist")+
+    statCard(s.simPracticalBest==null?"—":s.simPracticalBest+"%","lab practical best")+
     statCard(s.simEasyBest==null?"—":s.simEasyBest+"%","sim easy best")+
     statCard(s.simHardBest==null?"—":s.simHardBest+"%","sim hard best")+
     '</div>';
@@ -892,7 +930,8 @@ window.APP={
   PLANTS:PLANTS, COMMUNITIES:COMMUNITIES, normalize:normalize, lev:lev, simRatio:simRatio, checkTyped:checkTyped,
   buildMC4:buildMC4, buildTyped4:buildTyped4, mcText:mcText, mcPhoto:mcPhoto, mcCommunity:mcCommunity,
   loadWatch:loadWatch, saveWatch:saveWatch, recordResult:recordResult, watchCount:watchCount, watchPlants:watchPlants,
-  byId:byId, startPractice:startPractice, startSimulate:startSimulate, startWatchlistPractice:startWatchlistPractice,
+  byId:byId, startPractice:startPractice, startSimulate:startSimulate, startLabPractical:startLabPractical,
+  startWatchlistPractice:startWatchlistPractice, LAB_TYPES:LAB_TYPES,
   go:go, getQuiz:function(){return quiz;}, SIM_TYPES:SIM_TYPES, PRACTICE:PRACTICE,
   listUsers:listUsers, createUser:createUser, getActiveUser:getActiveUser, setActiveUser:setActiveUser,
   deleteUser:deleteUser, loadProfile:loadProfile, saveProfile:saveProfile, saveProfileLocal:saveProfileLocal,
