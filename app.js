@@ -372,7 +372,8 @@ function renderQuestion(){
       finishQuestion(q, res.ok, {typedValue:input.value, ratio:res.ratio, allowOverride:!res.ok});
     };
     el("checkBtn").onclick=submit;
-    input.addEventListener("keydown",function(e){ if(e.key==="Enter") submit(); });
+    // preventDefault stops this same Enter from also activating the (about-to-be-focused) Next button
+    input.addEventListener("keydown",function(e){ if(e.key==="Enter"){ e.preventDefault(); submit(); } });
   }
   el("nextBtn").classList.add("hidden");
 }
@@ -443,7 +444,8 @@ function finishQuestion(q, correct, extra){
   el("qProg").style.width=((quiz.i+1)/quiz.items.length*100)+"%";
   var nb=el("nextBtn"); nb.classList.remove("hidden");
   nb.textContent=(quiz.i+1>=quiz.items.length)?"See results →":"Next →";
-  if(nb.focus) nb.focus();
+  // defer focus so the Enter keypress that submitted can't also trigger this button
+  setTimeout(function(){ if(nb && nb.focus) nb.focus(); }, 0);
 }
 
 function revealHTML(p){
