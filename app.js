@@ -285,7 +285,8 @@ function typed(opts){
     promptItalic:!!opts.promptItalic, photo:opts.photo||null, desc:opts.desc||null,
     accept:opts.accept, italicInput:!!opts.italicInput, correctDisplay:opts.correctDisplay,
     placeholder:opts.placeholder||"Type your answer…",
-    threshold:(typeof opts.threshold==="number"?opts.threshold:undefined), hint:opts.hint||null};
+    threshold:(typeof opts.threshold==="number"?opts.threshold:undefined),
+    hint:opts.hint||null, look:opts.look||null};
 }
 
 // the 4 simulate question "types" -> a question object for a given format ("mc"/"typed")
@@ -425,8 +426,15 @@ function finishQuestion(q, correct, extra){
     typedNote=' You typed: <b>'+esc(extra.typedValue||"(blank)")+'</b>'+
       (extra.ratio!=null?' <span class="muted">('+Math.round(extra.ratio*100)+'% match)</span>':'');
   }
-  // hint on a wrong answer (Lab Practical): root/feature clue to help it stick
-  var hintBox = (!correct && q.hint) ? '<div class="hintbox">💡 <b>Hint:</b> '+esc(q.hint)+'</div>' : '';
+  // hint on a wrong answer (Lab Practical): what to SEE + the root/feature clue
+  var hintBox = "";
+  if(!correct && (q.look || q.hint)){
+    hintBox = '<div class="hintbox">'+
+      (q.look ? '👁 <b>Look for:</b> '+esc(q.look) : '')+
+      (q.look && q.hint ? '<br>' : '')+
+      (q.hint ? '💡 <b>Hint:</b> '+esc(q.hint) : '')+
+      '</div>';
+  }
   fb.innerHTML=head+typedNote+hintBox+revealHTML(q.plant);
   panel.appendChild(fb);
 
@@ -571,16 +579,16 @@ function buildLab(plant, type){
   if(type==="labCommon")
     return typed({plant:plant, promptLabel:"Specimen — type the COMMON name", photo:plant.image_url,
       accept:[plant.common_name], correctDisplay:plant.common_name, placeholder:"common name…",
-      threshold:LAB_THRESHOLD, hint:h.common});
+      threshold:LAB_THRESHOLD, hint:h.common, look:h.look});
   if(type==="labSci")
     return typed({plant:plant, promptLabel:"Specimen — type the SCIENTIFIC name", photo:plant.image_url,
       italicInput:true, accept:[plant.scientific_name], correctDisplay:plant.scientific_name, placeholder:"Genus species…",
-      threshold:LAB_THRESHOLD, hint:h.sci});
+      threshold:LAB_THRESHOLD, hint:h.sci, look:h.look});
   // labHabitat
   return typed({plant:plant, promptLabel:"Specimen — type the HABITAT / plant community", photo:plant.image_url,
     accept:(plant.communities && plant.communities.length)?plant.communities:[plant.primary_community],
     correctDisplay:plant.primary_community, placeholder:"plant community…",
-    threshold:LAB_THRESHOLD, hint:h.habitat});
+    threshold:LAB_THRESHOLD, hint:h.habitat, look:h.look});
 }
 function startLabPractical(){
   var pool=shuffle(PLANTS).slice(0, Math.min(20, PLANTS.length));
