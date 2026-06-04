@@ -109,6 +109,9 @@ select{padding:8px 11px;border-radius:10px;border:1px solid var(--line);backgrou
 .feedback.show{display:block}
 .feedback.ok{background:var(--good-l);color:#1d6b39;border:1px solid #bfe3c9}
 .feedback.no{background:var(--bad-l);color:#9b291d;border:1px solid #f0c5be}
+.hintbox{margin-top:10px;background:var(--warn-l);border:1px solid #e6d4a8;border-radius:10px;
+  padding:9px 12px;font-size:.9rem;color:#6b531c}
+.hintbox b{color:#5a4413}
 .override{margin-top:10px}
 .override .btn{background:var(--warn);color:#fff}
 .reveal{display:flex;gap:14px;margin-top:12px;align-items:flex-start;flex-wrap:wrap}

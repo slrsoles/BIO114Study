@@ -38,9 +38,11 @@ function lev(a,b){
 }
 function simRatio(a,b){ if(!a&&!b)return 1; var mx=Math.max(a.length,b.length,1); return 1-(lev(a,b)/mx); }
 
-// typed-answer checker. accepts an array of acceptable answers. Returns {ok, ratio}.
-// ok = exact (normalized) OR >= 80% character similarity. Handles "/"-separated alternatives.
-function checkTyped(input, acceptList){
+// typed-answer checker. accepts an array of acceptable answers + an optional pass threshold
+// (default 0.80). ok = exact (normalized) OR >= threshold character similarity.
+// Handles "/"-separated alternatives. Returns {ok, ratio}.
+function checkTyped(input, acceptList, threshold){
+  if(typeof threshold!=="number") threshold=0.8;
   var ni=normalize(input);
   if(!ni) return {ok:false, ratio:0};
   var best=0;
@@ -56,7 +58,7 @@ function checkTyped(input, acceptList){
       if(r>best)best=r;
     }
   }
-  return {ok: best>=0.8, ratio: best};
+  return {ok: best>=threshold, ratio: best};
 }
 
 /* ---------------- user profiles + persistent progress ----------------
@@ -277,11 +279,13 @@ function mcCommunity(opts){
     options:options, correctDisplay:correct};
 }
 function typed(opts){
-  // opts:{plant, promptLabel, promptText, promptItalic, photo, desc, accept[], italicInput, correctDisplay, placeholder}
+  // opts:{plant, promptLabel, promptText, promptItalic, photo, desc, accept[], italicInput,
+  //       correctDisplay, placeholder, threshold, hint}
   return {format:"typed", plant:opts.plant, promptLabel:opts.promptLabel, promptText:opts.promptText||null,
     promptItalic:!!opts.promptItalic, photo:opts.photo||null, desc:opts.desc||null,
     accept:opts.accept, italicInput:!!opts.italicInput, correctDisplay:opts.correctDisplay,
-    placeholder:opts.placeholder||"Type your answer…"};
+    placeholder:opts.placeholder||"Type your answer…",
+    threshold:(typeof opts.threshold==="number"?opts.threshold:undefined), hint:opts.hint||null};
 }
 
 // the 4 simulate question "types" -> a question object for a given format ("mc"/"typed")
@@ -363,7 +367,7 @@ function renderQuestion(){
     if(input.focus) input.focus();
     var submit=function(){
       if(quiz.answered) return;
-      var res=checkTyped(input.value, q.accept);
+      var res=checkTyped(input.value, q.accept, q.threshold);
       input.disabled=true;
       finishQuestion(q, res.ok, {typedValue:input.value, ratio:res.ratio, allowOverride:!res.ok});
     };
@@ -420,7 +424,9 @@ function finishQuestion(q, correct, extra){
     typedNote=' You typed: <b>'+esc(extra.typedValue||"(blank)")+'</b>'+
       (extra.ratio!=null?' <span class="muted">('+Math.round(extra.ratio*100)+'% match)</span>':'');
   }
-  fb.innerHTML=head+typedNote+revealHTML(q.plant);
+  // hint on a wrong answer (Lab Practical): root/feature clue to help it stick
+  var hintBox = (!correct && q.hint) ? '<div class="hintbox">💡 <b>Hint:</b> '+esc(q.hint)+'</div>' : '';
+  fb.innerHTML=head+typedNote+hintBox+revealHTML(q.plant);
   panel.appendChild(fb);
 
   if(extra.allowOverride){
@@ -557,17 +563,22 @@ function startSimulate(difficulty){
 /* Lab Practical (v2): mirrors the real bench exam — a specimen photo is always shown,
    and you type ONE thing about it (common name, scientific name, or habitat/community). */
 var LAB_TYPES=["labCommon","labSci","labHabitat"];
+var LAB_THRESHOLD=0.95;   // the bench exam is graded strictly: 95% accuracy = correct
 function buildLab(plant, type){
+  var h=plant.hints||{};
   if(type==="labCommon")
     return typed({plant:plant, promptLabel:"Specimen — type the COMMON name", photo:plant.image_url,
-      accept:[plant.common_name], correctDisplay:plant.common_name, placeholder:"common name…"});
+      accept:[plant.common_name], correctDisplay:plant.common_name, placeholder:"common name…",
+      threshold:LAB_THRESHOLD, hint:h.common});
   if(type==="labSci")
     return typed({plant:plant, promptLabel:"Specimen — type the SCIENTIFIC name", photo:plant.image_url,
-      italicInput:true, accept:[plant.scientific_name], correctDisplay:plant.scientific_name, placeholder:"Genus species…"});
+      italicInput:true, accept:[plant.scientific_name], correctDisplay:plant.scientific_name, placeholder:"Genus species…",
+      threshold:LAB_THRESHOLD, hint:h.sci});
   // labHabitat
   return typed({plant:plant, promptLabel:"Specimen — type the HABITAT / plant community", photo:plant.image_url,
     accept:(plant.communities && plant.communities.length)?plant.communities:[plant.primary_community],
-    correctDisplay:plant.primary_community, placeholder:"plant community…"});
+    correctDisplay:plant.primary_community, placeholder:"plant community…",
+    threshold:LAB_THRESHOLD, hint:h.habitat});
 }
 function startLabPractical(){
   var pool=shuffle(PLANTS).slice(0, Math.min(20, PLANTS.length));
