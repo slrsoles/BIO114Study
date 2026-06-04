@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>BIO 114 — Plant Study</title>
+<style>
+  :root{--bg:#f4f1ea;--panel:#fff;--ink:#23301f;--muted:#6b7860;--green:#3f6b3a;--green-d:#2c4d29;--line:#e2ddd0;--bad:#c0392b}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:linear-gradient(160deg,#f4f1ea 0%,#e7efe2 100%);color:var(--ink);
+    display:flex;align-items:center;justify-content:center;padding:24px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;
+    box-shadow:0 6px 22px rgba(40,60,30,.10);padding:34px 30px;max-width:420px;width:100%;text-align:center}
+  .leaf{font-size:2.6rem}
+  h1{font-size:1.3rem;margin:8px 0 2px}
+  p{margin:0 0 16px;color:var(--muted);font-size:.92rem}
+  form{display:flex;gap:9px;flex-wrap:wrap}
+  input{flex:1;min-width:160px;padding:12px 14px;border-radius:11px;border:1.5px solid var(--line);font-size:1rem;background:#fff;color:var(--ink)}
+  input:focus{outline:none;border-color:var(--green)}
+  button{border:none;border-radius:11px;padding:12px 18px;font-weight:600;cursor:pointer;background:var(--green);color:#fff}
+  button:hover{filter:brightness(1.05)}
+  button:disabled{opacity:.6;cursor:default}
+  .err{min-height:18px;margin-top:10px;color:var(--bad);font-size:.85rem}
+  .foot{margin-top:6px;color:var(--muted);font-size:.76rem}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="leaf">🌿</div>
+    <h1>BIO 114 — Plant Study</h1>
+    <p>This study site is password-protected.</p>
+    <form id="f">
+      <input id="pw" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Enter password">
+      <button type="submit" id="btn">Enter</button>
+    </form>
+    <div class="err" id="err"></div>
+    <div class="foot">Access is remembered on this device and network.</div>
+  </div>
+<script>
+  var err=document.getElementById("err"), btn=document.getElementById("btn"), pw=document.getElementById("pw");
+  pw.focus();
+  // auto-enter if this network was already authorized (cookie is issued server-side)
+  fetch("/api/gate?check=1").then(function(r){return r.json();}).then(function(j){
+    if(j && j.authorized) location.replace("/");
+  }).catch(function(){});
+  document.getElementById("f").addEventListener("submit", function(e){
+    e.preventDefault();
+    var val=pw.value||""; if(!val) return;
+    btn.disabled=true; err.textContent="";
+    fetch("/api/gate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:val})})
+      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j}; }); })
+      .then(function(res){
+        if(res.ok && res.j && res.j.authorized){ location.replace("/"); }
+        else { err.textContent="Incorrect password — try again."; btn.disabled=false; pw.focus(); pw.select(); }
+      })
+      .catch(function(){ err.textContent="Network error — try again."; btn.disabled=false; });
+  });
+</script>
+</body>
+</html>

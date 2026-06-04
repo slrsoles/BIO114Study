@@ -53,19 +53,26 @@ injects `KV_REST_API_URL` and `KV_REST_API_TOKEN` automatically. Redeploy.
 
 `api/progress.js` reads either pair of variables. No code changes needed.
 
-## Password-protect the site (optional)
+## Password-protect the site (Shopify-style, edge-enforced)
 
-To lock the app behind a shared password (Shopify-style), set one env var in Vercel:
+Set one env var in Vercel to lock the whole site:
 
-- `SITE_PASSWORD` = the password you want to share.
+- `SITE_PASSWORD` = the shared password (remove it to disable the gate).
 
-With it set, visitors see a password page before the app. After a correct entry, that **network (IP) is
-remembered for 30 days** in Redis (stored hashed, never the raw IP), so the password is only entered once per
-network. Remove the env var to disable the gate. Requires the same Redis env vars as above for the per-IP memory.
+How it works (real server-side protection, not a client overlay):
 
-Notes: this gates the UI, not the raw static files (which remain fetchable on any static host), and it fails
-**open** if the gate API is unreachable so you can't get locked out — it's a deterrent against link-sharing,
-not hardened access control.
+- **`middleware.js`** (Vercel Edge Middleware) runs on **every** request. Without a valid auth cookie it
+  redirects page requests to `/gate.html` and returns `401` for `/api/*` — so unauthenticated visitors never
+  receive `index.html`, `app.js`, `data.js`, the images, or anything else. The protected bytes are never sent.
+- **`/gate.html`** is the standalone password page the edge serves to unauthenticated visitors.
+- **`api/gate.js`** verifies the password and sets a **signed, HttpOnly cookie** (an HMAC token, key derived
+  from `SITE_PASSWORD`). The middleware verifies that token statelessly at the edge — no per-request DB lookup.
+- The cookie lasts 30 days (per browser). As a convenience, the first correct entry also records the **network
+  (IP)** in Redis (hashed, 30-day TTL), so a new device on the same network is auto-issued a cookie without
+  retyping ("once per network"). Needs the same Redis env vars as the progress sync.
+
+This is the same model as Shopify's storefront password: enforcement happens before any content is served.
+If `SITE_PASSWORD` is unset, the gate is disabled and the site is fully open.
 
 ## Data notes
 

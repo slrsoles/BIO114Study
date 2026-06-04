@@ -952,54 +952,13 @@ function init(){
     else if(e.key==="ArrowRight") ncStep(1);
     else if(e.key==="ArrowLeft") ncStep(-1);
   });
-  // password gate (per-IP, validated server-side) runs before the app is usable
-  passwordGate(startApp);
+  // Access control is enforced at the edge (middleware.js): unauthenticated requests never
+  // receive this file, so by the time app.js runs the visitor is already authorized.
+  startApp();
 }
 function startApp(){
   updateWatchBadge(); updateUserChip();
   go(getActiveUser()?"home":"gate");
-}
-
-/* ---------- password gate ---------- */
-function passwordGate(onPass){
-  if(typeof fetch!=="function"){ onPass(); return; }   // e.g. opened as a local file: don't lock out
-  fetch("/api/gate?check=1").then(function(r){ return r.ok?r.json():null; }).then(function(j){
-    if(!j || !j.enabled || j.authorized){ onPass(); }   // gate off, or this IP already authorized
-    else showPasswordPage(onPass);
-  }).catch(function(){ onPass(); });                     // API unreachable -> fail open (don't brick the app)
-}
-function showPasswordPage(onPass){
-  var ov=document.createElement("div");
-  ov.id="gateOverlay";
-  ov.innerHTML=
-    '<div class="gate-pw-card">'+
-      '<div class="leaf">🌿</div>'+
-      '<h2>BIO 114 — Plant Study</h2>'+
-      '<p>This study site is password-protected.</p>'+
-      '<div class="gate-pw-row">'+
-        '<input id="gatePw" type="password" autocomplete="off" autocapitalize="off" '+
-        'autocorrect="off" spellcheck="false" placeholder="Enter password">'+
-        '<button class="btn btn-primary" id="gateBtn">Enter</button>'+
-      '</div>'+
-      '<div class="gate-err" id="gateErr"></div>'+
-      '<div class="gate-foot">Access is remembered for this network.</div>'+
-    '</div>';
-  document.body.appendChild(ov);
-  var pw=el("gatePw"); if(pw && pw.focus) pw.focus();
-  var submit=function(){
-    var val=(pw.value||"");
-    if(!val) return;
-    var btn=el("gateBtn"); btn.disabled=true; el("gateErr").textContent="";
-    fetch("/api/gate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:val})})
-      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j}; }); })
-      .then(function(res){
-        if(res.ok && res.j && res.j.authorized){ if(ov.parentNode) ov.parentNode.removeChild(ov); onPass(); }
-        else { el("gateErr").textContent="Incorrect password — try again."; btn.disabled=false; pw.focus(); pw.select(); }
-      })
-      .catch(function(){ el("gateErr").textContent="Network error — try again."; btn.disabled=false; });
-  };
-  el("gateBtn").onclick=submit;
-  pw.addEventListener("keydown",function(e){ if(e.key==="Enter"){ e.preventDefault(); submit(); } });
 }
 if(document.readyState==="loading") document.addEventListener("DOMContentLoaded", init);
 else init();

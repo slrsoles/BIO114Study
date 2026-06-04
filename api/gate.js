@@ -41,6 +41,17 @@ function samePassword(a, b) {
   if (ba.length !== bb.length) return false;
   try { return crypto.timingSafeEqual(ba, bb); } catch (e) { return false; }
 }
+// Stateless signed token verified at the edge (middleware.js uses the same key + algorithm).
+var COOKIE = "bio114_auth";
+function signToken() {
+  var exp = Date.now() + TTL_SECONDS * 1000;
+  var sig = crypto.createHmac("sha256", PASSWORD + "|bio114").update(String(exp)).digest("base64url");
+  return exp + "." + sig;
+}
+function setAuthCookie(res) {
+  res.setHeader("Set-Cookie",
+    COOKIE + "=" + signToken() + "; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=" + TTL_SECONDS);
+}
 
 module.exports = async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
@@ -50,11 +61,14 @@ module.exports = async function handler(req, res) {
   var ip = clientIp(req);
   try {
     if (req.method === "GET") {
+      // Convenience: if this network already entered the password, hand out a cookie automatically
+      // (this is the "once per IP" behaviour) so a new device on the same network skips the prompt.
       var authed = false;
       if (REST_URL && REST_TOKEN) {
         var v = await redis(["GET", ipKey(ip)]);
         authed = !!v;
       }
+      if (authed) setAuthCookie(res);
       res.status(200).json({ enabled: true, authorized: authed });
       return;
     }
@@ -63,8 +77,9 @@ module.exports = async function handler(req, res) {
       if (typeof body === "string") { try { body = JSON.parse(body); } catch (e) { body = {}; } }
       body = body || {};
       var ok = samePassword(body.password || "", PASSWORD);
-      if (ok && REST_URL && REST_TOKEN) {
-        await redis(["SET", ipKey(ip), "1", "EX", String(TTL_SECONDS)]);
+      if (ok) {
+        setAuthCookie(res);                                      // per-browser signed cookie (verified at the edge)
+        if (REST_URL && REST_TOKEN) await redis(["SET", ipKey(ip), "1", "EX", String(TTL_SECONDS)]); // per-network memory
       }
       res.status(ok ? 200 : 401).json({ enabled: true, authorized: ok });
       return;
